@@ -23,10 +23,12 @@ sys.path.append(os.path.abspath("model"))
 load_dotenv()
 
 st.set_page_config(
-    page_title="Stock Dashboard",
+    page_title="StockZen",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 st.markdown("""
 <style>
     :root {
@@ -183,7 +185,7 @@ def map_ticker_to_symbol(ticker):
     return all_stocks.get(ticker, None)
 
 # Sidebar selections (unchanged)
-st.sidebar.title("📈 Stock Dashboard")
+st.sidebar.title("📈 StockZen")
 st.sidebar.markdown("---")
 selected_stock_name = st.sidebar.selectbox(
     "Select Company",
@@ -267,9 +269,8 @@ def get_relevant_news(stock_name, ticker):
             desc = article.get('description', '').lower() if article.get('description') else ""
             if any([full_name.lower() in title, ticker.lower() in title, full_name.lower() in desc, ticker.lower() in desc]):
                 filtered.append(article)
-        return filtered[:5]
+        return filtered[:100]
     except Exception as e:
-        st.error(f"News API Error: {e}")
         return []
 
 # Load FinBERT sentiment model using transformers
@@ -603,8 +604,6 @@ def main():
                 st.session_state.tuned_models[selected_stock] = (tuned_model, scaler_local)
         else:
             tuned_model, scaler_local = st.session_state.tuned_models[selected_stock]
-            st.info(f"Using cached tuned model for {selected_stock}")
-
         with st.spinner("Generating predictions..."):
             predictions = get_gb_predictions(selected_stock, df_full, tuned_model, scaler_local)
         if predictions is not None and not predictions.empty:
@@ -655,7 +654,7 @@ def main():
             
             st.line_chart(predictions.set_index("Date")["Predicted_Close"])
         else:
-            st.warning("Predictions are not available for this stock. Please check if there is enough data for training.")
+            st.warning("Predictions are not available for this stock. Please check back later.")
     
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     
