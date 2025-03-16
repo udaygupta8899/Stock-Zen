@@ -1,0 +1,12 @@
+streamlit
+yfinance
+plotly
+pandas
+numpy
+requests
+python-dotenv
+datetime
+joblib
+lightgbm==4.5.0
+scikit-learn
+optuna
