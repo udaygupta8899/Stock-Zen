@@ -4,7 +4,7 @@
 
 StockZen combines modern technology with local market expertise to bring you a seamless, user-friendly investing experience.
 
-**Web Link** stockzen.streamlit.app
+**Web Link: ** https://stockzen.streamlit.app
 
 ## Features
 
