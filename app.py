@@ -14,6 +14,7 @@ import joblib
 import lightgbm as lgb
 from sklearn.preprocessing import StandardScaler
 import optuna  # For hyperparameter tuning
+from transformers import pipeline  # For FinBERT sentiment analysis
 
 # Add the model directory to the path (if needed)
 sys.path.append(os.path.abspath("model"))
@@ -178,111 +179,7 @@ all_stocks = {
     "IndiaMART InterMESH": "INDIAMART.NS"
 }
 
-
 def map_ticker_to_symbol(ticker):
-    symbol_map = {
-        "Reliance Industries": "RELIANCE.NS",
-        "HDFC Bank": "HDFCBANK.NS",
-        "Infosys": "INFY.NS",
-        "ICICI Bank": "ICICIBANK.NS",
-        "Tata Consultancy Services": "TCS.NS",
-        "Kotak Mahindra Bank": "KOTAKBANK.NS",
-        "Hindustan Unilever": "HINDUNILVR.NS",
-        "Bajaj Finance": "BAJFINANCE.NS",
-        "State Bank of India": "SBIN.NS",
-        "Larsen & Toubro": "LT.NS",
-        "Maruti Suzuki": "MARUTI.NS",
-        "Mahindra & Mahindra": "M&M.NS",
-        "ITC": "ITC.NS",
-        "Asian Paints": "ASIANPAINT.NS",
-        "Sun Pharma": "SUNPHARMA.NS",
-        "Dr. Reddy's Laboratories": "DRREDDY.NS",
-        "Tata Motors": "TATAMOTORS.NS",
-        "Bajaj Finserv": "BAJAJFINSV.NS",
-        "Nestle India": "NESTLEIND.NS",
-        "NTPC": "NTPC.NS",
-        "Oil & Natural Gas Corporation": "ONGC.NS",
-        "Power Grid Corporation": "POWERGRID.NS",
-        "Tata Steel": "TATASTEEL.NS",
-        "Tech Mahindra": "TECHM.NS",
-        "Wipro": "WIPRO.NS",
-        "HCL Technologies": "HCLTECH.NS",
-        "IndusInd Bank": "INDUSINDBK.NS",
-        "UPL": "UPL.NS",
-        "Bajaj Auto": "BAJAJ-AUTO.NS",
-        "Adani Ports & SEZ": "ADANIPORTS.NS",
-        "Grasim Industries": "GRASIM.NS",
-        "Divi's Laboratories": "DIVISLAB.NS",
-        "Apollo Hospitals": "APOLLOHOSP.NS",
-        "Shree Cement": "SHREECEM.NS",
-        "JSW Steel": "JSWSTEEL.NS",
-        "Titan Company": "TITAN.NS",
-        "Hindalco Industries": "HINDALCO.NS",
-        "Coal India": "COALINDIA.NS",
-        "Bharat Petroleum": "BPCL.NS",
-        "GAIL": "GAIL.NS",
-        "Indian Oil Corporation": "IOC.NS",
-        "Adani Enterprises": "ADANIENT.NS",
-        "Adani Green Energy": "ADANIGREEN.NS",
-        "Adani Total Gas": "ADANIGAS.NS",
-        "Adani Power": "ADANIPOWER.NS",
-        "Torrent Pharmaceuticals": "TORNTPHARM.NS",
-        "Cipla": "CIPLA.NS",
-        "Biocon": "BIOCON.NS",
-        "Lupin": "LUPIN.NS",
-        "Britannia Industries": "BRITANNIA.NS",
-        "Dabur India": "DABUR.NS",
-        "Godrej Consumer Products": "GODREJCP.NS",
-        "SBI Life Insurance": "SBILIFE.NS",
-        "ICICI Prudential Life Insurance": "ICICIPRULI.NS",
-        "LIC Housing Finance": "LICHSGFIN.NS",
-        "Shriram Finance": "SHRIRAMFIN.NS",
-        "Pidilite Industries": "PIDILITIND.NS",
-        "Tata Consumer Products": "TATACONSUM.NS",
-        "Marico": "MARICO.NS",
-        "Voltas": "VOLTAS.NS",
-        "Siemens India": "SIEMENS.NS",
-        "Ashok Leyland": "ASHOKLEY.NS",
-        "Bharat Electronics": "BEL.NS",
-        "Bharat Heavy Electricals": "BHEL.NS",
-        "Jindal Steel & Power": "JINDALSTEL.NS",
-        "Vodafone Idea": "IDEA.NS",
-        "Motherson Sumi Systems": "MOTHERSUMI.NS",
-        "JSW Energy": "JSWENERGY.NS",
-        "Container Corporation of India": "CONCOR.NS",
-        "Canara Bank": "CANBK.NS",
-        "Punjab National Bank": "PNB.NS",
-        "Union Bank of India": "UNIONBANK.NS",
-        "IDFC First Bank": "IDFCFIRSTB.NS",
-        "RBL Bank": "RBLBANK.NS",
-        "Yes Bank": "YESBANK.NS",
-        "Bandhan Bank": "BANDHANBNK.NS",
-        "DLF": "DLF.NS",
-        "IRCTC": "IRCTC.NS",
-        "M&M Financial Services": "M&MFIN.NS",
-        "Tata Communications": "TATACOMM.NS",
-        "Adani Wilmar": "ADANIWILMAR.NS",
-        "Hindustan Petroleum": "HINDPETRO.NS",
-        "Bharat Forge": "BHARATFORG.NS",
-        "Crompton Greaves": "CGPOWER.NS",
-        "Berger Paints": "BERGEPAINT.NS",
-        "NHPC": "NHPC.NS",
-        "Tata Power": "TATAPOWER.NS",
-        "Can Fin Homes": "CANFINHOME.NS",
-        "Dixon Technologies": "DIXON.NS",
-        "Aarti Industries": "AARTIIND.NS",
-        "Adani Transmission": "ADANITRANS.NS",
-        "Shriram Transport Finance": "SHRIRAMTF.NS",
-        "PVR": "PVR.NS",
-        "Jubilant FoodWorks": "JUBLFOOD.NS",
-        "GMR Infra": "GMRINFRA.NS",
-        "Finolex Industries": "FINOLEXIND.NS",
-        "Cummins India": "CUMMINSIND.NS",
-        "Emami": "EMAMILTD.NS",
-        "Future Retail": "FRETAIL.NS",
-        "IndiaMART InterMESH": "INDIAMART.NS"
-    }
-
     return all_stocks.get(ticker, None)
 
 # Sidebar selections (unchanged)
@@ -374,6 +271,35 @@ def get_relevant_news(stock_name, ticker):
     except Exception as e:
         st.error(f"News API Error: {e}")
         return []
+
+# Load FinBERT sentiment model using transformers
+@st.cache_resource
+def load_sentiment_model():
+    return pipeline("text-classification", model="ProsusAI/finbert")
+
+sentiment_pipeline = load_sentiment_model()
+
+def get_news_sentiment_with_impact(text):
+    result = sentiment_pipeline(text[:512])
+    label = result[0]['label'].capitalize()  # e.g. 'Positive', 'Negative', or 'Neutral'
+    score = result[0]['score']
+    # Heuristic: Impact is score multiplied by 5%
+    if label.lower() == "positive":
+        impact = round(score * 5, 2)
+    elif label.lower() == "negative":
+        impact = round(-score * 5, 2)
+    else:
+        impact = 0.0
+    return label, impact
+
+# Function to pick sentiment color
+def sentiment_color(label):
+    if label.lower() == "positive":
+        return "#4CAF50"  # green
+    elif label.lower() == "negative":
+        return "#F44336"  # red
+    else:
+        return "#9E9E9E"  # neutral gray
 
 # Use st.session_state to cache tuned models per stock
 if "tuned_models" not in st.session_state:
@@ -499,7 +425,7 @@ def get_gb_predictions(stock_symbol, data_df, tuned_model, scaler_local):
     })
     # Compute daily returns:
     # For the first day, return is relative to the base price.
-    # For subsequent days, return is relative to the previous predicted price.
+    # For subsequent days, return is relative to the previous predicted day's price.
     if not pred_df.empty:
         returns = []
         for idx, price in enumerate(pred_df["Predicted_Close"]):
@@ -568,18 +494,18 @@ def main():
     st.subheader("Price Movement")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
-        x=df_display.index,
+        x=df_display["Date"],
         open=df_display['Open'],
         high=df_display['High'],
         low=df_display['Low'],
         close=df_display['Close'],
-        name='Price',
+        name='Price'
     ))
     if candlestick_ma:
         for days, color in [(20, '#FFA726'), (50, '#26C6DA')]:
             ma = df_display['Close'].rolling(days).mean()
             fig.add_trace(go.Scatter(
-                x=df_display.index,
+                x=df_display["Date"],
                 y=ma,
                 name=f'{days} MA',
                 line=dict(color=color, width=2)
@@ -591,20 +517,20 @@ def main():
         upper_band = sma + 2 * std
         lower_band = sma - 2 * std
         fig.add_trace(go.Scatter(
-            x=df_display.index,
+            x=df_display["Date"],
             y=sma,
             line=dict(color='#FF6F00', width=1.5),
             name='Bollinger Middle (20 SMA)'
         ))
         fig.add_trace(go.Scatter(
-            x=df_display.index,
+            x=df_display["Date"],
             y=upper_band,
             line=dict(color='#4CAF50', width=1.5),
             name='Upper Band (2σ)',
             fill=None
         ))
         fig.add_trace(go.Scatter(
-            x=df_display.index,
+            x=df_display["Date"],
             y=lower_band,
             line=dict(color='#F44336', width=1.5),
             name='Lower Band (2σ)',
@@ -633,7 +559,7 @@ def main():
         st.subheader("Relative Strength Index (RSI)")
         fig_rsi = go.Figure()
         fig_rsi.add_trace(go.Scatter(
-            x=df_display.index,
+            x=df_display["Date"],
             y=rsi,
             line=dict(color='#8A2BE2', width=2),
             name='RSI'
@@ -651,7 +577,7 @@ def main():
     
     st.subheader("Trading Volume")
     fig_vol = go.Figure(go.Bar(
-        x=df_display.index,
+        x=df_display["Date"],
         y=df_display['Volume'],
         marker=dict(color='rgba(255, 99, 132, 0.6)'),
         name="Volume"
@@ -677,6 +603,7 @@ def main():
                 st.session_state.tuned_models[selected_stock] = (tuned_model, scaler_local)
         else:
             tuned_model, scaler_local = st.session_state.tuned_models[selected_stock]
+            st.info(f"Using cached tuned model for {selected_stock}")
 
         with st.spinner("Generating predictions..."):
             predictions = get_gb_predictions(selected_stock, df_full, tuned_model, scaler_local)
@@ -740,10 +667,16 @@ def main():
             title = article.get('title', '')
             description = article.get('description', '')
             url = article.get('url', '')
+            # Compute sentiment and impact using FinBERT on the title
+            sentiment_label, impact = get_news_sentiment_with_impact(title)
+            color = sentiment_color(sentiment_label)
             st.markdown(f"""
             <div class="news-card">
                 <h3><a href="{url}" target="_blank">{title}</a></h3>
                 <p>{description}</p>
+                <div style="border-radius: 8px; padding: 4px 8px; background-color: {color}; display: inline-block; color: white; margin-top: 4px;">
+                    {sentiment_label} (Impact: {impact:+.2f}%)
+                </div>
             </div>
             """, unsafe_allow_html=True)
     else:
