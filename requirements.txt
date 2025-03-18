@@ -13,3 +13,5 @@ optuna
 transformers
 torch
 torchvision
+feedparser
+fintechlab

@@ -15,6 +15,7 @@ import lightgbm as lgb
 from sklearn.preprocessing import StandardScaler
 import optuna  # For hyperparameter tuning
 from transformers import pipeline  # For FinBERT sentiment analysis
+import feedparser
 
 # Add the model directory to the path (if needed)
 sys.path.append(os.path.abspath("model"))
@@ -244,54 +245,115 @@ def fetch_full_stock_data(symbol):
         st.error(f"Error fetching full historical data: {e}")
         return None
 
+# @st.cache_data(ttl=1800)
+# def get_relevant_news(stock_name, ticker):
+    # news_api_key = os.getenv("NEWS_API_KEY", "your_news_api_key_here")
+    # full_name = stock_name
+    # query = f'"{full_name}" OR "{ticker}"'
+    # date_from = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    # params = {
+    #     'q': query,
+    #     'language': 'en',
+    #     'sortBy': 'relevancy',
+    #     'pageSize': 10,
+    #     'apiKey': news_api_key,
+    #     'from': date_from,
+    #     'qInTitle': stock_name
+    # }
+    # try:
+    #     response = requests.get("https://newsapi.org/v2/everything", params=params)
+    #     response.raise_for_status()
+    #     articles = response.json().get('articles', [])
+    #     filtered = []
+    #     for article in articles:
+    #         title = article.get('title', '').lower() if article.get('title') else ""
+    #         desc = article.get('description', '').lower() if article.get('description') else ""
+    #         if any([full_name.lower() in title, ticker.lower() in title, full_name.lower() in desc, ticker.lower() in desc]):
+    #             filtered.append(article)
+    #     return filtered[:100]
+    # except Exception as e:
+    #     return []
 @st.cache_data(ttl=1800)
 def get_relevant_news(stock_name, ticker):
-    news_api_key = os.getenv("NEWS_API_KEY", "your_news_api_key_here")
-    full_name = stock_name
-    query = f'"{full_name}" OR "{ticker}"'
-    date_from = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-    params = {
-        'q': query,
-        'language': 'en',
-        'sortBy': 'relevancy',
-        'pageSize': 10,
-        'apiKey': news_api_key,
-        'from': date_from,
-        'qInTitle': stock_name
-    }
+    # Convert multi-word stock names into Google-friendly search format
+    query = "+".join(stock_name.split())  # Example: "Reliance Industries" → "Reliance+Industries"
+
+    # Google News RSS URL
+    rss_url = f"https://news.google.com/rss/search?q={query}+OR+{ticker}&hl=en-US&gl=US&ceid=US:en"
+    
     try:
-        response = requests.get("https://newsapi.org/v2/everything", params=params)
-        response.raise_for_status()
-        articles = response.json().get('articles', [])
+        # Parse RSS feed
+        news_feed = feedparser.parse(rss_url)
         filtered = []
-        for article in articles:
-            title = article.get('title', '').lower() if article.get('title') else ""
-            desc = article.get('description', '').lower() if article.get('description') else ""
-            if any([full_name.lower() in title, ticker.lower() in title, full_name.lower() in desc, ticker.lower() in desc]):
-                filtered.append(article)
-        return filtered[:100]
+        
+        for entry in news_feed.entries:
+            title = entry.get('title', '').lower()
+            desc = entry.get('summary', '').lower()
+            link = entry.get('link', '')
+
+            # Check if stock name or ticker appears in title/description
+            if any(word.lower() in title or word.lower() in desc for word in stock_name.split()) or ticker.lower() in title or ticker.lower() in desc:
+                filtered.append({
+                    'title': entry.title,
+                    'description': entry.summary,
+                    'link': link,
+                    'publishedAt': entry.get('published', 'Unknown Date')
+                })
+        
+        return filtered[:10]
     except Exception as e:
         return []
 
+
+
 # Load FinBERT sentiment model using transformers
 @st.cache_resource
-def load_sentiment_model():
-    return pipeline("text-classification", model="ProsusAI/finbert")
+def load_groq_api_key():
+    return os.getenv("GROQ_API_KEY", "your_api_key_here")
 
-sentiment_pipeline = load_sentiment_model()
+GROQ_API_KEY = load_groq_api_key()
 
 def get_news_sentiment_with_impact(text):
-    result = sentiment_pipeline(text[:512])
-    label = result[0]['label'].capitalize()  # e.g. 'Positive', 'Negative', or 'Neutral'
-    score = result[0]['score']
-    # Heuristic: Impact is score multiplied by 5%
-    if label.lower() == "positive":
-        impact = round(score * 5, 2)
-    elif label.lower() == "negative":
-        impact = round(-score * 5, 2)
-    else:
-        impact = 0.0
-    return label, impact
+    API_URL = "https://api.groq.com/openai/v1/chat/completions"
+    HEADERS = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+
+    prompt = f'''
+    You are a financial analyst. Analyze the sentiment of the following stock market news.
+    Classify it as **Positive, Negative, or Neutral** and provide an impact score from -5 to 5.
+
+    News: {text}
+
+    Return output in the format: 
+    Sentiment: <Positive/Negative/Neutral>
+    Impact: <impact_score>
+    '''
+
+    data = {
+        "model": "llama3-8b-8192",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2
+    }
+
+    try:
+        response = requests.post(API_URL, json=data, headers=HEADERS)
+        response.raise_for_status()
+        output = response.json()["choices"][0]["message"]["content"]
+        
+        # Extract sentiment and impact score from response
+        sentiment, impact = None, 0
+        for line in output.split("\n"):
+            if "Sentiment:" in line:
+                sentiment = line.split(":")[-1].strip()
+            if "Impact:" in line:
+                try:
+                    impact = float(line.split(":")[-1].strip())
+                except ValueError:
+                    impact = 0.0  # Default if parsing fails
+        
+        return sentiment, impact
+    except Exception as e:
+        return "Error", 0.0
+
 
 # Function to pick sentiment color
 def sentiment_color(label):
