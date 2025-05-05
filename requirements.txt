@@ -16,4 +16,3 @@ torchvision
 feedparser
 fintechlab
 matplotlib
-xgboost

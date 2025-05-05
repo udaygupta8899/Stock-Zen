@@ -13,13 +13,13 @@ import optuna
 from transformers import pipeline
 import feedparser
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.model_selection import TimeSeriesSplit
-import warnings
+import optuna  # For hyperparameter tuning
+from transformers import pipeline  # For FinBERT sentiment analysis
+import feedparser
 
 warnings.filterwarnings("ignore")
 
-# Setup & CSS theme
+# Load environment variables (e.g., for NEWS_API_KEY)
 load_dotenv()
 st.set_page_config(page_title="StockZen", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
@@ -43,7 +43,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar: stock selection & chart options
+# Stock list (unchanged)
 all_stocks = {
     "Reliance Industries": "RELIANCE.NS",
     "HDFC Bank": "HDFCBANK.NS",
@@ -72,9 +72,85 @@ all_stocks = {
     "Wipro": "WIPRO.NS",
     "HCL Technologies": "HCLTECH.NS",
     "IndusInd Bank": "INDUSINDBK.NS",
-    "UPL": "UPL.NS"
+    "UPL": "UPL.NS",
+    "Bajaj Auto": "BAJAJ-AUTO.NS",
+    "Adani Ports & SEZ": "ADANIPORTS.NS",
+    "Grasim Industries": "GRASIM.NS",
+    "Divi's Laboratories": "DIVISLAB.NS",
+    "Apollo Hospitals": "APOLLOHOSP.NS",
+    "Shree Cement": "SHREECEM.NS",
+    "JSW Steel": "JSWSTEEL.NS",
+    "Titan Company": "TITAN.NS",
+    "Hindalco Industries": "HINDALCO.NS",
+    "Coal India": "COALINDIA.NS",
+    "Bharat Petroleum": "BPCL.NS",
+    "GAIL": "GAIL.NS",
+    "Indian Oil Corporation": "IOC.NS",
+    "Adani Enterprises": "ADANIENT.NS",
+    "Adani Green Energy": "ADANIGREEN.NS",
+    "Adani Total Gas": "ADANIGAS.NS",
+    "Adani Power": "ADANIPOWER.NS",
+    "Torrent Pharmaceuticals": "TORNTPHARM.NS",
+    "Cipla": "CIPLA.NS",
+    "Biocon": "BIOCON.NS",
+    "Lupin": "LUPIN.NS",
+    "Britannia Industries": "BRITANNIA.NS",
+    "Dabur India": "DABUR.NS",
+    "Godrej Consumer Products": "GODREJCP.NS",
+    "SBI Life Insurance": "SBILIFE.NS",
+    "ICICI Prudential Life Insurance": "ICICIPRULI.NS",
+    "LIC Housing Finance": "LICHSGFIN.NS",
+    "Shriram Finance": "SHRIRAMFIN.NS",
+    "Pidilite Industries": "PIDILITIND.NS",
+    "Tata Consumer Products": "TATACONSUM.NS",
+    "Marico": "MARICO.NS",
+    "Voltas": "VOLTAS.NS",
+    "Siemens India": "SIEMENS.NS",
+    "Ashok Leyland": "ASHOKLEY.NS",
+    "Bharat Electronics": "BEL.NS",
+    "Bharat Heavy Electricals": "BHEL.NS",
+    "Jindal Steel & Power": "JINDALSTEL.NS",
+    "Vodafone Idea": "IDEA.NS",
+    "Motherson Sumi Systems": "MOTHERSUMI.NS",
+    "JSW Energy": "JSWENERGY.NS",
+    "Container Corporation of India": "CONCOR.NS",
+    "Canara Bank": "CANBK.NS",
+    "Punjab National Bank": "PNB.NS",
+    "Union Bank of India": "UNIONBANK.NS",
+    "IDFC First Bank": "IDFCFIRSTB.NS",
+    "RBL Bank": "RBLBANK.NS",
+    "Yes Bank": "YESBANK.NS",
+    "Bandhan Bank": "BANDHANBNK.NS",
+    "DLF": "DLF.NS",
+    "IRCTC": "IRCTC.NS",
+    "M&M Financial Services": "M&MFIN.NS",
+    "Tata Communications": "TATACOMM.NS",
+    "Adani Wilmar": "ADANIWILMAR.NS",
+    "Hindustan Petroleum": "HINDPETRO.NS",
+    "Bharat Forge": "BHARATFORG.NS",
+    "Crompton Greaves": "CGPOWER.NS",
+    "Berger Paints": "BERGEPAINT.NS",
+    "NHPC": "NHPC.NS",
+    "Tata Power": "TATAPOWER.NS",
+    "Can Fin Homes": "CANFINHOME.NS",
+    "Dixon Technologies": "DIXON.NS",
+    "Aarti Industries": "AARTIIND.NS",
+    "Adani Transmission": "ADANITRANS.NS",
+    "Shriram Transport Finance": "SHRIRAMTF.NS",
+    "PVR": "PVR.NS",
+    "Jubilant FoodWorks": "JUBLFOOD.NS",
+    "GMR Infra": "GMRINFRA.NS",
+    "Finolex Industries": "FINOLEXIND.NS",
+    "Cummins India": "CUMMINSIND.NS",
+    "Emami": "EMAMILTD.NS",
+    "Future Retail": "FRETAIL.NS",
+    "IndiaMART InterMESH": "INDIAMART.NS"
 }
 
+def map_ticker_to_symbol(ticker):
+    return all_stocks.get(ticker, None)
+
+# Sidebar selections (unchanged)
 st.sidebar.title("📈 StockZen")
 st.sidebar.markdown("---")
 selected_name = st.sidebar.selectbox(
@@ -85,7 +161,12 @@ selected_name = st.sidebar.selectbox(
 ticker = all_stocks[selected_name]
 
 st.sidebar.markdown("---")
-period = st.sidebar.selectbox("Time Period", ["1d","1wk","1mo","3mo","6mo","1y","2y","5y","max"], index=4)
+# For display, let the user select a period (for charts/metrics)
+selected_period = st.sidebar.selectbox(
+    "Time Period (for display)",
+    ["1d", "1wk", "1mo", "3mo", "6mo", "1y", "2y", "5y", "max"],
+    index=4
+)
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Chart Settings")
@@ -94,100 +175,30 @@ show_boll = st.sidebar.checkbox("Show Bollinger Bands", False)
 show_rsi = st.sidebar.checkbox("Show RSI", False)
 show_preds = st.sidebar.checkbox("Show ML Predictions", True)
 
-# Sentiment pipelines & API
-finbert = pipeline("sentiment-analysis", model="yiyanghkust/finbert-tone", tokenizer="yiyanghkust/finbert-tone")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-
-def get_news_sentiment_with_impact(text: str):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-    prompt = (
-        f"You are a financial analyst. Classify sentiment and score impact [-5 to +5].\n"
-        f"News: {text}\n"
-        "Return:\n"
-        "Sentiment: <Positive/Negative/Neutral>\n"
-        "Impact: <number>\n"
-    )
-    try:
-        r = requests.post(url, json={
-            "model":"llama3-8b-8192",
-            "messages":[{"role":"user","content":prompt}],
-            "temperature":0.2
-        }, headers=headers)
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
-        sent, imp = "Neutral", 0.0
-        for line in content.splitlines():
-            if line.lower().startswith("sentiment"):
-                sent = line.split(":",1)[1].strip()
-            if line.lower().startswith("impact"):
-                try: imp = float(line.split(":",1)[1].strip())
-                except: imp = 0.0
-        return sent, imp
-    except:
-        return "Neutral", 0.0
-
-def sentiment_color(lbl: str):
-    return {"positive":"#4CAF50","negative":"#F44336"}.get(lbl.lower(), "#9E9E9E")
-
-# Fetch & enrich news
-@st.cache_data(ttl=1800)
-def fetch_and_enrich_news(name: str, sym: str) -> pd.DataFrame:
-    query = "+".join(name.split())
-    rss = f"https://news.google.com/rss/search?q={query}+OR+{sym}&hl=en-US&gl=US&ceid=US:en"
-    feed = feedparser.parse(rss)
-    rows = []
-    for entry in feed.entries[:15]:
-        pub = entry.get("published", "")
-        ts = pd.to_datetime(pub, format="%a, %d %b %Y %H:%M:%S GMT", errors="coerce")
-        if pd.isna(ts):
-            ts = pd.to_datetime(pub, errors="coerce", utc=True)
-        title = entry.get("title", "")
-        desc = entry.get("summary", "")
-        link = entry.get("link", "")
-        fin = finbert(title)[0]
-        fin_score = fin["score"] if fin["label"]=="POSITIVE" else -fin["score"]
-        groq_lbl, groq_imp = get_news_sentiment_with_impact(title)
-        rows.append({
-            "published": ts,
-            "title": title,
-            "description": desc,
-            "link": link,
-            "finbert_score": fin_score,
-            "groq_impact": groq_imp
-        })
-    df = pd.DataFrame(rows)
-    return df.dropna(subset=["published"])
-
-# Compute combined daily sentiment
-def compute_daily_sentiment(name: str, sym: str, alpha: float = 0.6) -> pd.DataFrame:
-    df = fetch_and_enrich_news(name, sym)
-    if df.empty:
-        return pd.DataFrame(columns=["Date","daily_score"])
-    df["Date"] = df["published"].dt.date
-    agg = df.groupby("Date").agg({
-        "finbert_score":"mean",
-        "groq_impact": "mean"
-    }).reset_index()
-    agg["daily_score"] = alpha*agg["finbert_score"] + (1-alpha)*agg["groq_impact"]
-    agg["Date"] = pd.to_datetime(agg["Date"])
-    return agg[["Date","daily_score"]]
-
-# Fetch stock data & feature engineering
+# Caching stock data for display (using selected period)
 @st.cache_data(ttl=600)
-def fetch_stock_data(sym: str, per: str):
-    try:
-        t = yf.Ticker(sym)
-        df = t.history(period=per).reset_index()
-        if df.empty:
-            st.warning(f"No data retrieved for {sym} with period {per}. Please try a different ticker or period.")
-            return pd.DataFrame(), {}
-        info = t.info or {}
-        return df, info
-    except Exception as e:
-        st.error(f"Error fetching data for {sym}: {str(e)}")
-        return pd.DataFrame(), {}
+def fetch_stock_data(symbol, period):
+    retry_count = 3
+    for _ in range(retry_count):
+        try:
+            stock = yf.Ticker(symbol)
+            if period == "1h":
+                df = stock.history(period="1d", interval="1m")
+                if df.empty:
+                    st.warning("No data found for the last 1 hour. Trying with broader period.")
+                    df = stock.history(period="1d", interval="5m")
+            else:
+                df = stock.history(period=period)
+            df = df.reset_index()  # Ensure 'Date' is a column
+            info = stock.info
+            return df, info
+        except Exception as e:
+            st.warning(f"Error fetching data (attempting retry): {e}")
+            sleep(randint(1, 3))
+    st.error("Failed to fetch stock data after multiple attempts.")
+    return None, None
 
+# For model training, fetch all available data (i.e. period="max")
 @st.cache_data(ttl=600)
 def fetch_full_history(sym: str):
     try:
@@ -198,235 +209,362 @@ def fetch_full_history(sym: str):
             return pd.DataFrame()
         return df
     except Exception as e:
-        st.error(f"Error fetching historical data for {sym}: {str(e)}")
-        return pd.DataFrame()
+        st.error(f"Error fetching full historical data: {e}")
+        return None
 
-def add_features(df: pd.DataFrame, name: str, sym: str) -> pd.DataFrame:
-    if df.empty:
-        return pd.DataFrame()
-    df = df.copy()
-    df["Date"] = df["Date"].dt.date
-    sent = compute_daily_sentiment(name, sym)
-    sent["Date"] = sent["Date"].dt.date
-    df = df.merge(sent, on="Date", how="left")
-    df["daily_score"] = df["daily_score"].fillna(method="ffill").fillna(0.0)
-    df["lag1"] = df["Close"].shift(1)
-    df["lag2"] = df["Close"].shift(2)
-    df["ma5"] = df["Close"].shift(1).rolling(5).mean()
-    df["ma10"] = df["Close"].shift(1).rolling(10).mean()
-    df["volatility"] = df["Close"].shift(1).rolling(20).std()
-    df["momentum"] = df["Close"].shift(1) / df["Close"].shift(10) - 1
-    df["dow"] = pd.to_datetime(df["Date"]).dt.dayofweek
-    return df.dropna().reset_index(drop=True)
+# @st.cache_data(ttl=1800)
+# def get_relevant_news(stock_name, ticker):
+    # news_api_key = os.getenv("NEWS_API_KEY", "your_news_api_key_here")
+    # full_name = stock_name
+    # query = f'"{full_name}" OR "{ticker}"'
+    # date_from = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    # params = {
+    #     'q': query,
+    #     'language': 'en',
+    #     'sortBy': 'relevancy',
+    #     'pageSize': 10,
+    #     'apiKey': news_api_key,
+    #     'from': date_from,
+    #     'qInTitle': stock_name
+    # }
+    # try:
+    #     response = requests.get("https://newsapi.org/v2/everything", params=params)
+    #     response.raise_for_status()
+    #     articles = response.json().get('articles', [])
+    #     filtered = []
+    #     for article in articles:
+    #         title = article.get('title', '').lower() if article.get('title') else ""
+    #         desc = article.get('description', '').lower() if article.get('description') else ""
+    #         if any([full_name.lower() in title, ticker.lower() in title, full_name.lower() in desc, ticker.lower() in desc]):
+    #             filtered.append(article)
+    #     return filtered[:100]
+    # except Exception as e:
+    #     return []
+@st.cache_data(ttl=1800)
+def get_relevant_news(stock_name, ticker):
+    # Convert multi-word stock names into Google-friendly search format
+    query = "+".join(stock_name.split())  # Example: "Reliance Industries" → "Reliance+Industries"
 
-# Model tuning, evaluation & prediction
+    # Google News RSS URL
+    rss_url = f"https://news.google.com/rss/search?q={query}+OR+{ticker}&hl=en-US&gl=US&ceid=US:en"
+    
+    try:
+        # Parse RSS feed
+        news_feed = feedparser.parse(rss_url)
+        filtered = []
+        
+        for entry in news_feed.entries:
+            title = entry.get('title', '').lower()
+            desc = entry.get('summary', '').lower()
+            link = entry.get('link', '')
+
+            # Check if stock name or ticker appears in title/description
+            if any(word.lower() in title or word.lower() in desc for word in stock_name.split()) or ticker.lower() in title or ticker.lower() in desc:
+                filtered.append({
+                    'title': entry.title,
+                    'description': entry.summary,
+                    'link': link,
+                    'publishedAt': entry.get('published', 'Unknown Date')
+                })
+        
+        return filtered[:10]
+    except Exception as e:
+        return []
+
+
+
+# Load FinBERT sentiment model using transformers
 @st.cache_resource
-def tune_model_with_cv(df_full: pd.DataFrame, n_splits: int = 10):
-    df_feat = add_features(df_full, selected_name, ticker)
-    if df_feat.empty:
-        st.warning("No features generated for model training. Check data availability.")
-        return None, None, None
-    X = df_feat[["lag1","lag2","ma5","ma10","volatility","momentum","dow","daily_score"]].values
-    y = df_feat["Close"].values
-    tscv = TimeSeriesSplit(n_splits=n_splits, test_size=30, max_train_size=252*3)
+def load_groq_api_key():
+    return os.getenv("GROQ_API_KEY", "your_api_key_here")
 
-    def objective(trial):
-        params = {
-            "num_leaves": trial.suggest_int("num_leaves", 10, 30),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1),
-            "n_estimators": trial.suggest_int("n_estimators", 50, 300),
-            "max_depth": trial.suggest_int("max_depth", 3, 6),
-            "lambda_l1": trial.suggest_float("lambda_l1", 0.1, 10.0),
-            "lambda_l2": trial.suggest_float("lambda_l2", 0.1, 10.0),
-            "min_child_samples": trial.suggest_int("min_child_samples", 20, 100)
-        }
-        r2_scores = []
-        for train_idx, val_idx in tscv.split(X):
-            train_idx = train_idx[train_idx < val_idx.min() - 5]
-            Xtr, Xval = X[train_idx], X[val_idx]
-            ytr, yval = y[train_idx], y[val_idx]
-            model = lgb.LGBMRegressor(**params, objective="regression", random_state=42)
-            model.fit(
-                Xtr, ytr,
-                eval_set=[(Xval, yval)],
-                eval_metric="rmse",
-                callbacks=[lgb.early_stopping(30, first_metric_only=True)]
-            )
-            preds = model.predict(Xval)
-            r2_scores.append(r2_score(yval, preds))
-        return np.mean(r2_scores)
+GROQ_API_KEY = load_groq_api_key()
 
-    study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=50)
-    best_params = study.best_trial.params
-    scaler = StandardScaler().fit(X)
-    Xs_full = scaler.transform(X)
-    final_model = lgb.LGBMRegressor(**best_params, objective="regression", random_state=42)
-    final_model.fit(Xs_full, y)
-    return final_model, scaler, study.best_trial
+def get_news_sentiment_with_impact(text):
+    API_URL = "https://api.groq.com/openai/v1/chat/completions"
+    HEADERS = {"Authorization": f"Bearer {GROQ_API_KEY}"}
 
-@st.cache_resource
-def tune_xgb_model_with_cv(df_full: pd.DataFrame, n_splits: int = 10):
-    df_feat = add_features(df_full, selected_name, ticker)
-    if df_feat.empty:
-        st.warning("No features generated for model training. Check data availability.")
-        return None, None, None
-    X = df_feat[["lag1","lag2","ma5","ma10","volatility","momentum","dow","daily_score"]].values
-    y = df_feat["Close"].values
-    tscv = TimeSeriesSplit(n_splits=n_splits, test_size=30, max_train_size=252*3)
+    prompt = f'''
+    You are a financial analyst. Analyze the sentiment of the following stock market news.
+    Classify it as **Positive, Negative, or Neutral** and provide an impact score from -5 to 5.
 
-    def objective(trial):
-        params = {
-            "n_estimators": trial.suggest_int("n_estimators", 50, 300),
-            "max_depth": trial.suggest_int("max_depth", 3, 6),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1),
-            "subsample": trial.suggest_float("subsample", 0.7, 1.0),
-            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.7, 1.0),
-            "gamma": trial.suggest_float("gamma", 0.1, 5),
-            "reg_alpha": trial.suggest_float("reg_alpha", 0.1, 10),
-            "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 10),
-            "eval_metric": "rmse",
-            "random_state": 42,
-            "n_jobs": -1
-        }
-        r2_scores = []
-        for train_idx, val_idx in tscv.split(X):
-            train_idx = train_idx[train_idx < val_idx.min() - 5]
-            Xtr, Xval = X[train_idx], X[val_idx]
-            ytr, yval = y[train_idx], y[val_idx]
-            model = xgb.XGBRegressor(**params)
-            model.fit(
-                Xtr, ytr,
-                eval_set=[(Xval, yval)],
-                verbose=False
-            )
-            preds = model.predict(Xval)
-            r2_scores.append(r2_score(yval, preds))
-        return np.mean(r2_scores)
+    News: {text}
 
-    study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=50)
-    best_params = study.best_trial.params
-    scaler = StandardScaler().fit(X)
-    Xs_full = scaler.transform(X)
-    final_model = xgb.XGBRegressor(**best_params)
-    final_model.fit(Xs_full, y)
-    return final_model, scaler, study.best_trial
+    Return output in the format: 
+    Sentiment: <Positive/Negative/Neutral>
+    Impact: <impact_score>
+    '''
 
-def evaluate_model_with_test(df_full: pd.DataFrame, model, scaler, test_size: float = 0.2):
-    if model is None or scaler is None:
-        return {"rmse": float("nan"), "mae": float("nan"), "r2": float("nan")}, pd.DataFrame()
-    df_feat = add_features(df_full, selected_name, ticker)
-    if df_feat.empty:
-        return {"rmse": float("nan"), "mae": float("nan"), "r2": float("nan")}, pd.DataFrame()
-    X = df_feat[["lag1","lag2","ma5","ma10","volatility","momentum","dow","daily_score"]].values
-    y = df_feat["Close"].values
+    data = {
+        "model": "llama3-8b-8192",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2
+    }
+
+    try:
+        response = requests.post(API_URL, json=data, headers=HEADERS)
+        response.raise_for_status()
+        output = response.json()["choices"][0]["message"]["content"]
+        
+        # Extract sentiment and impact score from response
+        sentiment, impact = None, 0
+        for line in output.split("\n"):
+            if "Sentiment:" in line:
+                sentiment = line.split(":")[-1].strip()
+            if "Impact:" in line:
+                try:
+                    impact = float(line.split(":")[-1].strip())
+                except ValueError:
+                    impact = 0.0  # Default if parsing fails
+        
+        return sentiment, impact
+    except Exception as e:
+        return "Error", 0.0
+
+
+# Function to pick sentiment color
+def sentiment_color(label):
+    if label.lower() == "positive":
+        return "#4CAF50"  # green
+    elif label.lower() == "negative":
+        return "#F44336"  # red
+    else:
+        return "#9E9E9E"  # neutral gray
+
+# Use st.session_state to cache tuned models per stock
+if "tuned_models" not in st.session_state:
+    st.session_state.tuned_models = {}
+
+# Refresh button to clear the cached tuned model for the selected stock
+if st.sidebar.button("Refresh Model Cache"):
+    if selected_stock in st.session_state.tuned_models:
+        del st.session_state.tuned_models[selected_stock]
+        st.success(f"Model cache for {selected_stock} refreshed.")
+
+def tune_and_train_model(stock_symbol, data_df):
+    """
+    Generate features, scale them, and use Optuna to tune a LightGBM model.
+    Returns the tuned model and the fitted StandardScaler.
+    """
+    data_df = data_df.sort_values("Date").reset_index(drop=True)
+    # Feature Engineering
+    data_df["lag1"] = data_df["Close"].shift(1)
+    data_df["lag2"] = data_df["Close"].shift(2)
+    data_df["ma5"] = data_df["Close"].rolling(window=5).mean()
+    data_df["ma10"] = data_df["Close"].rolling(window=10).mean()
+    data_df["day_of_week"] = pd.to_datetime(data_df["Date"]).dt.dayofweek
+    data_df = data_df.dropna().reset_index(drop=True)
+    if data_df.empty:
+        st.error("Not enough data to generate features for training.")
+        return None, None
+
+    features = ["lag1", "lag2", "ma5", "ma10", "day_of_week"]
+    X = data_df[features]
+    y = data_df["Close"]
+
+    scaler_local = StandardScaler()
+    X_scaled = scaler_local.fit_transform(X)
+
+    # Use the first 80% of the data for training and the remaining 20% for validation
     n = len(y)
-    split = int((1 - test_size) * n)
-    X_trainval, X_test = X[:split], X[split:]
-    y_trainval, y_test = y[:split], y[split:]
-    X_test_scaled = scaler.transform(X_test)
-    y_pred = model.predict(X_test_scaled)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    mae = mean_absolute_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-    dates = pd.to_datetime(df_feat["Date"].iloc[split:])
-    backtest = pd.DataFrame({
-        "Date": dates,
-        "Actual": y_test,
-        "Predicted": y_pred
-    })
-    backtest["Upper"] = backtest["Predicted"] + 2 * (y_test - y_pred).std()
-    backtest["Lower"] = backtest["Predicted"] - 2 * (y_test - y_pred).std()
-    return {"rmse": rmse, "mae": mae, "r2": r2}, backtest
+    split_index = int(n * 0.8)
+    X_train, X_valid = X_scaled[:split_index], X_scaled[split_index:]
+    y_train, y_valid = y[:split_index], y[split_index:]
 
-def make_predictions(df_full: pd.DataFrame, model, scaler):
-    if model is None or scaler is None:
-        return pd.DataFrame()
-    df_feat = add_features(df_full, selected_name, ticker)
-    if df_feat.empty:
-        return pd.DataFrame()
-    last_close = df_feat["Close"].iloc[-1]
-    history = df_feat["Close"].tolist()[-10:]
-    today = pd.Timestamp(datetime.now().date())
-    curr = last_close
-    dates, preds = [], []
+    def objective(trial):
+        num_leaves = trial.suggest_int("num_leaves", 20, 100)
+        learning_rate = trial.suggest_loguniform("learning_rate", 0.01, 0.2)
+        n_estimators = trial.suggest_int("n_estimators", 50, 200)
+        max_depth = trial.suggest_int("max_depth", 3, 10)
+
+        model = lgb.LGBMRegressor(
+            num_leaves=num_leaves,
+            learning_rate=learning_rate,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            objective='regression',
+            random_state=42
+        )
+        # Fit without early_stopping_rounds
+        model.fit(X_train, y_train, eval_set=[(X_valid, y_valid)])
+        y_pred = model.predict(X_valid)
+        rmse = np.sqrt(np.mean((y_valid - y_pred) ** 2))
+        return rmse
+
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, n_trials=30)  # Increase n_trials for better results if needed
+
+    # Do not display best parameters on the website.
+    best_model = lgb.LGBMRegressor(
+        **study.best_trial.params,
+        objective='regression',
+        random_state=42
+    )
+    best_model.fit(X_scaled, y)
+    return best_model, scaler_local
+
+def get_gb_predictions(stock_symbol, data_df, tuned_model, scaler_local):
+    """
+    Using the tuned model and scaler, perform recursive forecasting for the next 7 days.
+    For the first predicted day, compute return relative to the base price (last historical close),
+    and for each subsequent day, compute the daily return as the percentage change from the previous predicted day.
+    """
+    data_df = data_df.sort_values("Date").reset_index(drop=True)
+    data_df["lag1"] = data_df["Close"].shift(1)
+    data_df["lag2"] = data_df["Close"].shift(2)
+    data_df["ma5"] = data_df["Close"].rolling(window=5).mean()
+    data_df["ma10"] = data_df["Close"].rolling(window=10).mean()
+    data_df["day_of_week"] = pd.to_datetime(data_df["Date"]).dt.dayofweek
+    data_df = data_df.dropna().reset_index(drop=True)
+    if data_df.empty:
+        st.error("Not enough data for prediction.")
+        return None
+
+    base_price = data_df["Close"].iloc[-1]  # Last historical close as baseline
+    last_row = data_df.iloc[-1].copy()
+    current_date = pd.to_datetime(last_row["Date"]).tz_localize(None)
+    today_date = pd.Timestamp(datetime.now().date())
+    if current_date < today_date:
+        current_date = today_date
+    current_close = last_row["Close"]
+    history = data_df["Close"].values[-10:].tolist()
+
+    pred_dates = []
+    pred_prices = []
     for _ in range(7):
-        nxt = today + timedelta(days=1)
-        while nxt.weekday() > 4:
-            nxt += timedelta(days=1)
-        feat = [
-            curr,
-            history[-2] if len(history) > 1 else curr,
-            np.mean(history[-5:]),
-            np.mean(history[-10:]),
-            df_feat["volatility"].iloc[-1],
-            df_feat["momentum"].iloc[-1],
-            nxt.weekday(),
-            df_feat["daily_score"].iloc[-1]
-        ]
-        p = model.predict(scaler.transform([feat]))[0]
-        dates.append(nxt)
-        preds.append(p)
-        history.append(p)
-        curr = p
-        today = nxt
-    out = pd.DataFrame({"Date": dates, "Predicted_Close": preds})
-    out["Predicted_Return"] = out["Predicted_Close"].pct_change().fillna((preds[0] - last_close) / last_close)
-    return out
+        next_date = current_date + timedelta(days=1)
+        while next_date.weekday() > 4:
+            next_date += timedelta(days=1)
+        lag1 = current_close
+        lag2 = history[-2] if len(history) >= 2 else current_close
+        ma5 = np.mean(history[-5:]) if len(history) >= 5 else current_close
+        ma10 = np.mean(history[-10:]) if len(history) >= 10 else current_close
+        day_of_week = next_date.weekday()
+        X_new = np.array([[lag1, lag2, ma5, ma10, day_of_week]])
+        X_new_scaled = scaler_local.transform(X_new)
+        next_close = tuned_model.predict(X_new_scaled)[0]
+        pred_dates.append(next_date)
+        pred_prices.append(next_close)
+        history.append(next_close)
+        current_close = next_close
+        current_date = next_date
 
-# Streamlit main()
+    pred_df = pd.DataFrame({
+        "Date": pred_dates,
+        "Predicted_Close": pred_prices
+    })
+    # Compute daily returns:
+    # For the first day, return is relative to the base price.
+    # For subsequent days, return is relative to the previous predicted day's price.
+    if not pred_df.empty:
+        returns = []
+        for idx, price in enumerate(pred_df["Predicted_Close"]):
+            if idx == 0:
+                returns.append((price - base_price) / base_price)
+            else:
+                prev_price = pred_df["Predicted_Close"].iloc[idx - 1]
+                returns.append((price - prev_price) / prev_price)
+        pred_df["Predicted_Return"] = returns
+    return pred_df
+
+def generate_sentiment_from_predictions(predictions, base_price):
+    """
+    Compute the overall expected percentage change as:
+    (Predicted 7th day price - current price) / current price * 100
+    and generate a sentiment dictionary.
+    """
+    if predictions is None or predictions.empty:
+        return None
+    last_price = predictions['Predicted_Close'].iloc[-1]
+    overall_change = (last_price - base_price) / base_price * 100
+    if overall_change > 2:
+        return {"sentiment": "positive", "change": f"+{overall_change:.2f}%", "class": "prediction-up"}
+    elif overall_change < -2:
+        return {"sentiment": "negative", "change": f"{overall_change:.2f}%", "class": "prediction-down"}
+    else:
+        return {"sentiment": "neutral", "change": f"{overall_change:.2f}%", "class": "prediction-neutral"}
+
 def main():
     st.title(f"{selected_name} Analysis")
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-    df_disp, info = fetch_stock_data(ticker, period)
-    df_full = fetch_full_history(ticker)
 
-    # Check if df_disp is empty before accessing data
-    if df_disp.empty:
-        st.error("Unable to display stock metrics due to missing data.")
-        metrics = [
-            ("Current Price", "N/A"),
-            ("Market Cap", "N/A"),
-            ("52W High", "N/A"),
-            ("52W Low", "N/A")
-        ]
-    else:
-        metrics = [
-            ("Current Price", f"₹{df_disp['Close'].iloc[-1]:,.2f}"),
-            ("Market Cap", f"₹{info.get('marketCap',0)/1e7:,.1f} Cr"),
-            ("52W High", f"₹{info.get('fiftyTwoWeekHigh',0):,.2f}"),
-            ("52W Low", f"₹{info.get('fiftyTwoWeekLow',0):,.2f}")
-        ]
+    # Fetch data for display using the user-selected period
+    with st.spinner('Loading market data for display...'):
+        df_display, info = fetch_stock_data(selected_stock, selected_period)
+    if df_display is None or df_display.empty:
+        st.warning("No data available for the selected stock")
+        return
 
+    # For model training and predictions, fetch all available historical data
+    with st.spinner('Loading full historical data for model training...'):
+        df_full = fetch_full_stock_data(selected_stock)
+    if df_full is None or df_full.empty:
+        st.warning("No full historical data available for model training")
+        return
+
+    st.subheader("Key Metrics")
     cols = st.columns(4)
     for c, (lab, val) in zip(cols, metrics):
         c.markdown(f"<div class='metric-card'><h3>{lab}</h3><p style='font-size:1.5rem;margin:0.5rem 0;'>{val}</p></div>", unsafe_allow_html=True)
     
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     
-    # Only display candlestick chart if data is available
-    if not df_disp.empty:
-        fig = go.Figure([go.Candlestick(
-            x=df_disp["Date"], open=df_disp["Open"], high=df_disp["High"],
-            low=df_disp["Low"], close=df_disp["Close"], name="Price"
-        )])
-        if candlestick_ma:
-            for w, col in [(20, "#FFA726"), (50, "#26C6DA")]:
-                fig.add_trace(go.Scatter(
-                    x=df_disp["Date"], y=df_disp["Close"].rolling(w).mean(),
-                    line=dict(color=col, width=2), name=f"{w} MA"
-                ))
-        if show_boll:
-            sma = df_disp["Close"].rolling(20).mean()
-            std = df_disp["Close"].rolling(20).std()
-            upper = sma + 2 * std
-            lower = sma - 2 * std
-            fig.add_trace(go.Scatter(x=df_disp["Date"], y=sma, line=dict(color="#FF6F00"), name="BB Middle"))
-            fig.add_trace(go.Scatter(x=df_disp["Date"], y=upper, line=dict(color="#4CAF50"), name="BB Upper"))
-            fig.add_trace(go.Scatter(x=df_disp["Date"], y=lower, line=dict(color="#F44336"), fill="tonexty", fillcolor="rgba(76,175,80,0.1)", name="BB Lower"))
-        fig.update_layout(template="plotly_dark", height=600, hovermode="x unified", showlegend=True, xaxis_rangeslider_visible=False, margin=dict(l=20,r=20,t=40,b=20))
-        st.plotly_chart(fig, use_container_width=True)
+    # Display Price Movement chart using display data
+    st.subheader("Price Movement")
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=df_display["Date"],
+        open=df_display['Open'],
+        high=df_display['High'],
+        low=df_display['Low'],
+        close=df_display['Close'],
+        name='Price'
+    ))
+    if candlestick_ma:
+        for days, color in [(20, '#FFA726'), (50, '#26C6DA')]:
+            ma = df_display['Close'].rolling(days).mean()
+            fig.add_trace(go.Scatter(
+                x=df_display["Date"],
+                y=ma,
+                name=f'{days} MA',
+                line=dict(color=color, width=2)
+            ))
+    if show_bollinger:
+        window = 20
+        sma = df_display['Close'].rolling(window).mean()
+        std = df_display['Close'].rolling(window).std()
+        upper_band = sma + 2 * std
+        lower_band = sma - 2 * std
+        fig.add_trace(go.Scatter(
+            x=df_display["Date"],
+            y=sma,
+            line=dict(color='#FF6F00', width=1.5),
+            name='Bollinger Middle (20 SMA)'
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_display["Date"],
+            y=upper_band,
+            line=dict(color='#4CAF50', width=1.5),
+            name='Upper Band (2σ)',
+            fill=None
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_display["Date"],
+            y=lower_band,
+            line=dict(color='#F44336', width=1.5),
+            name='Lower Band (2σ)',
+            fill='tonexty',
+            fillcolor='rgba(76, 175, 80, 0.1)'
+        ))
+    fig.update_layout(
+        template="plotly_dark",
+        height=600,
+        hovermode="x unified",
+        showlegend=True,
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    st.plotly_chart(fig, use_container_width=True)
     
     sent = compute_daily_sentiment(selected_name, ticker)
     if not sent.empty:
@@ -459,89 +597,93 @@ def main():
     
     if show_preds and not df_full.empty:
         st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-        st.subheader("Model Training & Backtest")
-        lgb_model, lgb_scaler, lgb_best_trial = tune_model_with_cv(df_full, n_splits=10)
-        xgb_model, xgb_scaler, xgb_best_trial = tune_xgb_model_with_cv(df_full, n_splits=10)
-        lgb_metrics, lgb_backtest = evaluate_model_with_test(df_full, lgb_model, lgb_scaler, test_size=0.2)
-        xgb_metrics, xgb_backtest = evaluate_model_with_test(df_full, xgb_model, xgb_scaler, test_size=0.2)
-        
-        if lgb_best_trial is not None and xgb_best_trial is not None:
-            st.markdown("**Model Performance Metrics**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**LightGBM**")
-                st.markdown(f"Best CV R²: {lgb_best_trial.value:.3f}")
-                st.markdown(f"Test R²: {lgb_metrics['r2']:.3f}")
-                st.markdown(f"RMSE: {lgb_metrics['rmse']:.2f}")
-                st.markdown(f"MAE: {lgb_metrics['mae']:.2f}")
-            with col2:
-                st.markdown("**XGBoost**")
-                st.markdown(f"Best CV R²: {xgb_best_trial.value:.3f}")
-                st.markdown(f"Test R²: {xgb_metrics['r2']:.3f}")
-                st.markdown(f"RMSE: {xgb_metrics['rmse']:.2f}")
-                st.markdown(f"MAE: {xgb_metrics['mae']:.2f}")
+        st.subheader("Price Predictions (Next 7 Days)")
+        # Retrieve or tune and train a model for the selected stock using Optuna on full historical data
+        if selected_stock not in st.session_state.tuned_models:
+            with st.spinner("Tuning and training model (this may take some time)..."):
+                tuned_model, scaler_local = tune_and_train_model(selected_stock, df_full)
+                if tuned_model is None:
+                    st.error("Model training failed.")
+                    return
+                st.session_state.tuned_models[selected_stock] = (tuned_model, scaler_local)
+        else:
+            tuned_model, scaler_local = st.session_state.tuned_models[selected_stock]
+        with st.spinner("Generating predictions..."):
+            predictions = get_gb_predictions(selected_stock, df_full, tuned_model, scaler_local)
+        if predictions is not None and not predictions.empty:
+            st.markdown("### Detailed Daily Predictions")
+            predictions["Return Indicator"] = predictions["Predicted_Return"].apply(
+                lambda x: f"▲ {x:.2%}" if x > 0 else (f"▼ {x:.2%}" if x < 0 else f"{x:.2%}")
+            )
+            predictions_table = pd.DataFrame({
+                'Date': predictions['Date'].dt.strftime('%Y-%m-%d'),
+                'Predicted Close': predictions['Predicted_Close'].map('₹{:,.2f}'.format),
+                'Daily Return': predictions["Return Indicator"]
+            })
+            st.table(predictions_table)
             
-            st.subheader("Backtest: Actual vs Predicted")
-            st.markdown("**LightGBM**")
-            if not lgb_backtest.empty:
-                fig_lgb = go.Figure()
-                fig_lgb.add_trace(go.Scatter(x=lgb_backtest["Date"], y=lgb_backtest["Actual"], mode="lines", name="Actual"))
-                fig_lgb.add_trace(go.Scatter(x=lgb_backtest["Date"], y=lgb_backtest["Predicted"], mode="lines", name="Predicted"))
-                fig_lgb.add_trace(go.Scatter(x=lgb_backtest["Date"], y=lgb_backtest["Upper"], mode="lines", line=dict(color="lightgrey"), name="Upper"))
-                fig_lgb.add_trace(go.Scatter(x=lgb_backtest["Date"], y=lgb_backtest["Lower"], mode="lines", line=dict(color="lightgrey"), fill="tonexty", name="Lower"))
-                fig_lgb.update_layout(template="plotly_dark", xaxis_title="Date", yaxis_title="Price")
-                st.plotly_chart(fig_lgb, use_container_width=True)
+            # Calculate overall expected change: (7th day predicted price - current price)/current price * 100
+            base_price = df_full["Close"].iloc[-1]
+            expected_change = (predictions["Predicted_Close"].iloc[-1] - base_price) / base_price * 100
+            sentiment = generate_sentiment_from_predictions(predictions, base_price)
+            sentiment_cols = st.columns(3)
+            with sentiment_cols[0]:
+                st.markdown(f"""
+                <div class="prediction-card">
+                    <h3>Predicted Trend</h3>
+                    <p style="font-size: 1.5rem; margin: 0.5rem 0;" class="{sentiment['class']}">
+                        {sentiment['sentiment'].title()}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            with sentiment_cols[1]:
+                st.markdown(f"""
+                <div class="prediction-card">
+                    <h3>Expected Change</h3>
+                    <p style="font-size: 1.5rem; margin: 0.5rem 0;" class="{sentiment['class']}">
+                        {expected_change:+.2f}%
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            with sentiment_cols[2]:
+                target_price = predictions['Predicted_Close'].iloc[-1]
+                st.markdown(f"""
+                <div class="prediction-card">
+                    <h3>7-Day Target Price</h3>
+                    <p style="font-size: 1.5rem; margin: 0.5rem 0;" class="{sentiment['class']}">
+                        ₹{target_price:,.2f}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
             
-            st.markdown("**XGBoost**")
-            if not xgb_backtest.empty:
-                fig_xgb = go.Figure()
-                fig_xgb.add_trace(go.Scatter(x=xgb_backtest["Date"], y=xgb_backtest["Actual"], mode="lines", name="Actual"))
-                fig_xgb.add_trace(go.Scatter(x=xgb_backtest["Date"], y=xgb_backtest["Predicted"], mode="lines", name="Predicted"))
-                fig_xgb.add_trace(go.Scatter(x=xgb_backtest["Date"], y=xgb_backtest["Upper"], mode="lines", line=dict(color="lightgrey"), name="Upper"))
-                fig_xgb.add_trace(go.Scatter(x=xgb_backtest["Date"], y=xgb_backtest["Lower"], mode="lines", line=dict(color="lightgrey"), fill="tonexty", name="Lower"))
-                fig_xgb.update_layout(template="plotly_dark", xaxis_title="Date", yaxis_title="Price")
-                st.plotly_chart(fig_xgb, use_container_width=True)
-            
-            st.subheader("7-Day Price Predictions")
-            lgb_preds = make_predictions(df_full, lgb_model, lgb_scaler)
-            xgb_preds = make_predictions(df_full, xgb_model, xgb_scaler)
-            if not lgb_preds.empty and not xgb_preds.empty:
-                preds = lgb_preds.merge(xgb_preds, on="Date", suffixes=("_LGB", "_XGB"))
-                preds["Predicted_Close_Avg"] = (preds["Predicted_Close_LGB"] + preds["Predicted_Close_XGB"]) / 2
-                preds["Predicted_Return_Avg"] = preds["Predicted_Close_Avg"].pct_change().fillna((preds["Predicted_Close_Avg"].iloc[0] - df_full["Close"].iloc[-1]) / df_full["Close"].iloc[-1])
-                st.table(pd.DataFrame({
-                    "Date": preds["Date"].dt.strftime("%Y-%m-%d"),
-                    "LightGBM": preds["Predicted_Close_LGB"].map("₹{:,.2f}".format),
-                    "XGBoost": preds["Predicted_Close_XGB"].map("₹{:,.2f}".format),
-                    "Average": preds["Predicted_Close_Avg"].map("₹{:,.2f}".format),
-                    "Return (Avg)": preds["Predicted_Return_Avg"].apply(lambda x: f"▲ {x:.2%}" if x > 0 else (f"▼ {abs(x):.2%}" if x < 0 else "0.00%"))
-                }))
-                base = df_full["Close"].iloc[-1]
-                target = preds["Predicted_Close_Avg"].iloc[-1]
-                change = (target - base) / base * 100
-                cls = "prediction-up" if change > 2 else ("prediction-down" if change < -2 else "prediction-neutral")
-                cols = st.columns(3)
-                with cols[0]:
-                    st.markdown(f"<div class='prediction-card'><h3>Predicted Trend</h3><p class='{cls}' style='font-size:1.5rem;margin:0.5rem 0;'>{cls.split('-')[-1].title()}</p></div>", unsafe_allow_html=True)
-                with cols[1]:
-                    st.markdown(f"<div class='prediction-card'><h3>Expected Change</h3><p class='{cls}' style='font-size:1.5rem;margin:0.5rem 0;'>{change:+.2f}%</p></div>", unsafe_allow_html=True)
-                with cols[2]:
-                    st.markdown(f"<div class='prediction-card'><h3>7-Day Target Price</h3><p class='{cls}' style='font-size:1.5rem;margin:0.5rem 0;'>₹{target:,.2f}</p></div>", unsafe_allow_html=True)
+            st.line_chart(predictions.set_index("Date")["Predicted_Close"])
+        else:
+            st.warning("Predictions are not available for this stock. Please check back later.")
     
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-    st.subheader("Latest News & Sentiment")
-    news_df = fetch_and_enrich_news(selected_name, ticker)
-    for _, row in news_df.head(5).iterrows():
-        col_label = sentiment_color(row.groq_impact > 0 and "positive" or "negative")
-        st.markdown(f"""
-          <div class="news-card">
-            <h4><a href="{row.link}" target="_blank">{row.title}</a></h4>
-            <p>{row.description}</p>
-            <span style="background:{col_label};padding:4px;border-radius:4px;color:#fff;">
-              FinBERT: {row.finbert_score:+.2f} | Impact: {row.groq_impact:+.2f}
-            </span>
-          </div>
-        """, unsafe_allow_html=True)
+    
+    st.subheader("Latest News")
+    with st.spinner("Loading news..."):
+        news_articles = get_relevant_news(selected_stock_name, selected_stock)
+    if news_articles:
+        for article in news_articles:
+            title = article.get('title', '')
+            description = article.get('description', '')
+            url = article.get('url', '')
+            # Compute sentiment and impact using FinBERT on the title
+            sentiment_label, impact = get_news_sentiment_with_impact(title)
+            color = sentiment_color(sentiment_label)
+            st.markdown(f"""
+            <div class="news-card">
+                <h3><a href="{url}" target="_blank">{title}</a></h3>
+                <p>{description}</p>
+                <div style="border-radius: 8px; padding: 4px 8px; background-color: {color}; display: inline-block; color: white; margin-top: 4px;">
+                    {sentiment_label} (Impact: {impact:+.2f}%)
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.warning("No news found for the selected stock.")
 
 if __name__ == "__main__":
     main()
