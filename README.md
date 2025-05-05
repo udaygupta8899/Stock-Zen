@@ -1,6 +1,6 @@
 # StockZen
 
-**StockZen** is a modern Indian stock dashboard designed to empower investors with live market data, advanced charting, and cutting-edge machine learning-based predictions for Indian stocks using Yahoo Finance data. Built with Streamlit, LightGBM, and Optuna, StockZen helps you make informed investment decisions by analyzing both recent and full historical data.
+**StockZen** is a modern Indian stock dashboard designed to empower investors with live market data, advanced charting, and cutting-edge machine learning-based predictions for Indian stocks using Yahoo Finance data. Built with Streamlit, LightGBM, XGBoost and Optuna, StockZen helps you make informed investment decisions by analyzing both recent and full historical data.
 
 StockZen combines modern technology with local market expertise to bring you a seamless, user-friendly investing experience.
 
